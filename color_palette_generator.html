@@ -1,0 +1,2005 @@
+
+    <script type="module">
+        /**
+         * Color Palette Generator
+         * 
+         * A sophisticated color palette generator that creates tonal variations within hue families
+         * using mathematical easing curves. Built with pure JavaScript for maximum compatibility.
+         * 
+         * Architecture:
+         * - State Management: Single global state object
+         * - Color Engine: Custom LCH/HSL conversions and easing functions
+         * - UI Components: Custom dropdown, synchronized inputs, real-time updates
+         * - Export System: Multiple formats (CSS, SVG) with clipboard integration
+         */
+
+        // =============================================================================
+        // GLOBAL STATE MANAGEMENT
+        // =============================================================================
+        
+        const state = {
+            families: [],              // Array of color family objects
+            selectedFamily: null,      // Index of currently selected family
+            stepsMin: 3,              // Steps from base toward min target
+            stepsMax: 3,              // Steps from base toward max target
+            transforms: {             // Delta values for target calculation
+                min: { l: -42, c: 8, h: -4 },    // Transform Min deltas
+                max: { l: 42, c: -8, h: 4 }      // Transform Max deltas
+            },
+            curveType: 'sinusoidalPosition',     // Active easing curve
+            exportColorSpace: 'lch'              // CSS export format
+        };
+
+        // =============================================================================
+        // MATHEMATICAL EASING FUNCTIONS
+        // =============================================================================
+        
+        /**
+         * Collection of easing functions for color interpolation
+         * Each function takes a parameter t (0-1) and returns an eased value (0-1)
+         */
+        const easingFunctions = {
+            linearPosition: (t) => t,
+            quadraticPosition: (t) => t * t,
+            cubicPosition: (t) => t * t * t,
+            sinusoidalPosition: (t) => 0.5 - 0.5 * Math.cos(t * Math.PI),
+            exponentialPosition: (t) => t === 0 ? 0 : Math.pow(2, 10 * (t - 1)),
+            smoothStepPosition: (t) => t * t * (3 - 2 * t)
+        };
+
+        // =============================================================================
+        // UTILITY FUNCTIONS
+        // =============================================================================
+        
+        /**
+         * Generate random number within range
+         */
+        function randomInRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        /**
+         * Clamp value between min and max
+         */
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        /**
+         * Generate random base color within design constraints
+         * - Hue: Full 0-360 range for maximum diversity
+         * - Saturation: Minimum 20% to avoid muddy colors
+         * - Lightness: 40-60% to allow good variation range
+         */
+        function generateRandomBaseColor() {
+            return [
+                randomInRange(0, 360),   // H: full range
+                randomInRange(0.2, 1),   // S: minimum 20% saturation
+                randomInRange(0.4, 0.6)  // L: within 10% of middle
+            ];
+        }
+
+        /**
+         * Generate color name based on hue value
+         * Simple mapping of hue ranges to color names
+         */
+        function generateColorName(hsl) {
+            const hue = hsl[0];
+            const hueNames = [
+                'red', 'orange', 'yellow', 'lime', 'green', 'teal', 
+                'cyan', 'sky', 'blue', 'purple', 'pink', 'rose'
+            ];
+            const index = Math.floor(hue / 30) % hueNames.length;
+            return hueNames[index];
+        }
+
+        // =============================================================================
+        // COLOR SPACE CONVERSIONS
+        // =============================================================================
+        
+        /**
+         * Convert LCH to HSL (simplified approximation)
+         * Note: This is a rough approximation. Production systems should use
+         * proper color science libraries like Culori for accurate conversions.
+         */
+        function lchToHsl(l, c, h) {
+            const lightness = l / 100;
+            const saturation = Math.min(c / 75, 1);
+            const hue = h;
+            return [hue, saturation, lightness];
+        }
+
+        /**
+         * Convert HSL to LCH (simplified approximation)
+         */
+        function hslToLch(hsl) {
+            const l = hsl[2] * 100;
+            const c = hsl[1] * 75;
+            const h = hsl[0];
+            return [l, c, h];
+        }
+
+        /**
+         * Convert HSL to RGB for hex export
+         */
+        function hslToRgb(hsl) {
+            const h = hsl[0] / 360;
+            const s = hsl[1];
+            const l = hsl[2];
+            
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            
+            return [r * 255, g * 255, b * 255];
+        }
+
+        // =============================================================================
+        // CORE COLOR CALCULATION ENGINE
+        // =============================================================================
+        
+        /**
+         * Calculate clamped target colors from base color and transforms
+         * Applies delta transformations and clamps results to valid LCH ranges
+         */
+        function calculateClampedTargets(baseHsl, transformMin, transformMax) {
+            const baseLch = hslToLch(baseHsl);
+            
+            // Apply transforms and clamp to valid LCH ranges
+            const minLch = [
+                clamp(baseLch[0] + transformMin.l, 0, 100),           // L: 0-100
+                clamp(baseLch[1] + transformMin.c, 0, 150),           // C: 0-150
+                ((baseLch[2] + transformMin.h) % 360 + 360) % 360     // H: wrap around 360°
+            ];
+            
+            const maxLch = [
+                clamp(baseLch[0] + transformMax.l, 0, 100),
+                clamp(baseLch[1] + transformMax.c, 0, 150),
+                ((baseLch[2] + transformMax.h) % 360 + 360) % 360
+            ];
+            
+            return {
+                min: lchToHsl(minLch[0], minLch[1], minLch[2]),
+                max: lchToHsl(maxLch[0], maxLch[1], maxLch[2])
+            };
+        }
+
+        /**
+         * Interpolate between two HSL colors with proper hue wrapping
+         * Uses shortest path around the color wheel for natural hue transitions
+         */
+        function interpolateHSL(color1, color2, t) {
+            // Calculate shortest path for hue interpolation
+            let h1 = color1[0];
+            let h2 = color2[0];
+            let deltaH = h2 - h1;
+            
+            // Take shortest path around color wheel
+            if (deltaH > 180) deltaH -= 360;
+            if (deltaH < -180) deltaH += 360;
+            
+            const h = (h1 + deltaH * t + 360) % 360;
+            const s = color1[1] + (color2[1] - color1[1]) * t;
+            const l = color1[2] + (color2[2] - color1[2]) * t;
+            
+            return [h, s, l];
+        }
+
+        /**
+         * Generate complete swatch array for a color family
+         * Order: [Min-N, ..., Min-1, Base, Max-1, ..., Max-N]
+         */
+        function generateFamilySwatches(baseHsl, minHsl, maxHsl, stepsMin, stepsMax, curveType) {
+            const swatches = [];
+            const easingFn = easingFunctions[curveType] || easingFunctions.sinusoidalPosition;
+            
+            // Generate swatches toward Min (reverse order for proper sequence)
+            for (let i = stepsMin; i > 0; i--) {
+                const t = easingFn(i / stepsMin);
+                const swatch = interpolateHSL(baseHsl, minHsl, t);
+                swatches.push(swatch);
+            }
+            
+            // Add base color (always present)
+            swatches.push(baseHsl);
+            
+            // Generate swatches toward Max
+            for (let i = 1; i <= stepsMax; i++) {
+                const t = easingFn(i / stepsMax);
+                const swatch = interpolateHSL(baseHsl, maxHsl, t);
+                swatches.push(swatch);
+            }
+            
+            return swatches;
+        }
+
+        // =============================================================================
+        // SVG CURVE ICON GENERATION
+        // =============================================================================
+        
+        /**
+         * Create SVG icon representing an easing curve
+         * Generates path data that visually represents the curve shape
+         */
+        function createCurveIcon(curveType, width = 24, height = 16) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', width);
+            svg.setAttribute('height', height);
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('stroke', 'currentColor');
+            path.setAttribute('stroke-width', '1.5');
+            path.setAttribute('fill', 'none');
+            
+            // Generate curve-specific path data
+            let pathData;
+            switch(curveType) {
+                case 'linearPosition':
+                    pathData = `M 2 ${height-2} L ${width-2} 2`;
+                    break;
+                case 'quadraticPosition':
+                    pathData = `M 2 ${height-2} Q 6 ${height-2} ${width-2} 2`;
+                    break;
+                case 'quadraticPosition-reverse':
+                    pathData = `M 2 ${height-2} Q ${width-6} 2 ${width-2} 2`;
+                    break;
+                case 'sinusoidalPosition':
+                    pathData = `M 2 ${height-2} Q ${width/4} ${height-2} ${width/2} ${height/2} T ${width-2} 2`;
+                    break;
+                case 'exponentialPosition':
+                    pathData = `M 2 ${height-2} Q 2 ${height/2} ${width-2} 2`;
+                    break;
+                case 'cubicPosition':
+                    pathData = `M 2 ${height-2} C 2 ${height-2} 8 ${height-6} ${width-2} 2`;
+                    break;
+                case 'smoothStepPosition':
+                    pathData = `M 2 ${height-2} C 8 ${height-2} ${width-8} 2 ${width-2} 2`;
+                    break;
+                default:
+                    pathData = `M 2 ${height-2} L ${width-2} 2`;
+            }
+            
+            path.setAttribute('d', pathData);
+            svg.appendChild(path);
+            return svg;
+        }
+
+        // =============================================================================
+        // UI COMPONENT CREATION
+        // =============================================================================
+        
+        /**
+         * Create custom curve selection dropdown with visual icons
+         * Provides accessible dropdown with keyboard navigation
+         */
+        function createCustomCurveDropdown() {
+            const container = document.getElementById('curve-select');
+            container.innerHTML = '';
+            
+            // Create dropdown button
+            const button = document.createElement('button');
+            button.className = 'curve-dropdown-button';
+            button.type = 'button';
+            button.innerHTML = `
+                ${createCurveIcon('sinusoidalPosition').outerHTML}
+                <span>Ease In Out</span>
+                <svg class="chevron" width="12" height="8" viewBox="0 0 12 8">
+                    <path d="M2 2 L6 6 L10 2" stroke="currentColor" fill="none" stroke-width="1.5"/>
+                </svg>
+            `;
+            
+            // Create dropdown menu
+            const dropdown = document.createElement('div');
+            dropdown.className = 'curve-dropdown-menu';
+            dropdown.style.display = 'none';
+            
+            // Define available curves
+            const curves = [
+                { value: 'linearPosition', label: 'Linear' },
+                { value: 'quadraticPosition', label: 'Ease In' },
+                { value: 'quadraticPosition', label: 'Ease Out', reverse: true },
+                { value: 'sinusoidalPosition', label: 'Ease In Out', selected: true },
+                { value: 'exponentialPosition', label: 'Exponential' },
+                { value: 'cubicPosition', label: 'Cubic' },
+                { value: 'smoothStepPosition', label: 'Smooth Step' }
+            ];
+            
+            // Create curve options
+            curves.forEach(curve => {
+                const option = document.createElement('div');
+                option.className = 'curve-option';
+                option.setAttribute('data-value', curve.value);
+                if (curve.reverse) option.setAttribute('data-reverse', 'true');
+                if (curve.selected) option.classList.add('selected');
+                
+                const iconType = curve.reverse ? `${curve.value}-reverse` : curve.value;
+                option.innerHTML = `
+                    ${createCurveIcon(iconType).outerHTML}
+                    <span>${curve.label}</span>
+                `;
+                
+                option.addEventListener('click', () => {
+                    selectCurve(curve.value, curve.reverse, curve.label, iconType);
+                    closeDropdown();
+                });
+                
+                dropdown.appendChild(option);
+            });
+            
+            // Event listeners for dropdown behavior
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleDropdown();
+            });
+            
+            document.addEventListener('click', (e) => {
+                if (!container.contains(e.target)) {
+                    closeDropdown();
+                }
+            });
+            
+            container.appendChild(button);
+            container.appendChild(dropdown);
+            
+            // Dropdown control functions
+            function toggleDropdown() {
+                const isOpen = dropdown.style.display !== 'none';
+                dropdown.style.display = isOpen ? 'none' : 'block';
+                button.setAttribute('aria-expanded', !isOpen);
+            }
+            
+            function closeDropdown() {
+                dropdown.style.display = 'none';
+                button.setAttribute('aria-expanded', 'false');
+            }
+            
+            function selectCurve(value, reverse, label, iconType) {
+                // Update button display
+                button.innerHTML = `
+                    ${createCurveIcon(iconType).outerHTML}
+                    <span>${label}</span>
+                    <svg class="chevron" width="12" height="8" viewBox="0 0 12 8">
+                        <path d="M2 2 L6 6 L10 2" stroke="currentColor" fill="none" stroke-width="1.5"/>
+                    </svg>
+                `;
+                
+                // Update selected state
+                dropdown.querySelectorAll('.curve-option').forEach(opt => opt.classList.remove('selected'));
+                dropdown.querySelector(`[data-value="${value}"]${reverse ? '[data-reverse="true"]' : ':not([data-reverse])'}`)?.classList.add('selected');
+                
+                // Apply curve change to all families
+                state.curveType = value;
+                updateAllFamilies();
+            }
+        }
+
+        /**
+         * Create HTML structure for a color family
+         */
+        function createFamilyHTML(index, baseHsl, name, nameIsCustom) {
+            const nameOpacity = nameIsCustom ? '1' : '0.6';
+            const family = document.createElement('div');
+            family.className = `family family-${index}`;
+            family.setAttribute('data-family-index', index);
+            
+            family.innerHTML = `
+                <div class="family-name" style="opacity: ${nameOpacity}">${name}</div>
+                <div class="swatches"></div>
+            `;
+            
+            family.addEventListener('click', () => selectFamily(index));
+            
+            return family;
+        }
+
+        // =============================================================================
+        // FAMILY MANAGEMENT FUNCTIONS
+        // =============================================================================
+        
+        /**
+         * Update visual display of a color family
+         * Calculates all swatches and updates DOM
+         */
+        function updateFamilyDisplay(familyIndex) {
+            const family = state.families[familyIndex];
+            const { min: minHsl, max: maxHsl } = calculateClampedTargets(
+                family.base, state.transforms.min, state.transforms.max
+            );
+            const swatches = generateFamilySwatches(
+                family.base, minHsl, maxHsl, state.stepsMin, state.stepsMax, state.curveType
+            );
+            
+            const familyElement = document.querySelector(`.family-${familyIndex}`);
+            const swatchesContainer = familyElement.querySelector('.swatches');
+            
+            // Clear and rebuild swatches
+            swatchesContainer.innerHTML = '';
+            swatches.forEach((hsl, swatchIndex) => {
+                const swatch = document.createElement('div');
+                swatch.className = 'swatch';
+                swatch.style.backgroundColor = `hsl(${hsl[0]}, ${hsl[1] * 100}%, ${hsl[2] * 100}%)`;
+                swatch.title = `${family.name}-${swatchIndex + 1}`;
+                swatchesContainer.appendChild(swatch);
+            });
+        }
+
+        /**
+         * Select a color family and show its controls
+         */
+        function selectFamily(familyIndex) {
+            // Update visual selection
+            document.querySelectorAll('.family').forEach(f => f.classList.remove('selected'));
+            const familyElement = document.querySelector(`.family-${familyIndex}`);
+            familyElement.classList.add('selected');
+            
+            state.selectedFamily = familyIndex;
+            
+            // Show and populate family controls
+            const controls = document.getElementById('selected-family-controls');
+            controls.style.display = 'block';
+            
+            const family = state.families[familyIndex];
+            const baseLch = hslToLch(family.base);
+            
+            // Update control values
+            document.getElementById('family-name').value = family.name;
+            document.getElementById('family-name').style.opacity = family.nameIsCustom ? '1' : '0.6';
+            
+            document.getElementById('base-l').value = Math.round(baseLch[0]);
+            document.getElementById('base-l-slider').value = Math.round(baseLch[0]);
+            document.getElementById('base-c').value = Math.round(baseLch[1]);
+            document.getElementById('base-c-slider').value = Math.round(baseLch[1]);
+            document.getElementById('base-h').value = Math.round(baseLch[2]);
+            document.getElementById('base-h-slider').value = Math.round(baseLch[2]);
+        }
+
+        /**
+         * Add new color family with random base color
+         */
+        function addFamily() {
+            try {
+                const familyIndex = state.families.length;
+                const baseHsl = generateRandomBaseColor();
+                const name = generateColorName(baseHsl);
+                
+                const family = {
+                    base: baseHsl,
+                    name: name,
+                    nameIsCustom: false
+                };
+                
+                state.families.push(family);
+                
+                const familyElement = createFamilyHTML(familyIndex, baseHsl, name, false);
+                document.getElementById('families-container').appendChild(familyElement);
+                
+                updateFamilyDisplay(familyIndex);
+                updateCSSExport();
+                
+                console.log('Added family:', family);
+            } catch (error) {
+                console.error('Error adding family:', error);
+            }
+        }
+
+        /**
+         * Update all color families (used when global settings change)
+         */
+        function updateAllFamilies() {
+            state.families.forEach((_, index) => {
+                updateFamilyDisplay(index);
+            });
+            updateCSSExport();
+        }
+
+        // =============================================================================
+        // INPUT SYNCHRONIZATION
+        // =============================================================================
+        
+        /**
+         * Synchronize number inputs with range sliders
+         * Ensures both inputs always show the same value
+         */
+        function syncInputs(changedElement) {
+            const isSlider = changedElement.type === 'range';
+            const isNumber = changedElement.type === 'number';
+            
+            if (isSlider) {
+                const numberId = changedElement.id.replace('-slider', '');
+                const numberInput = document.getElementById(numberId);
+                if (numberInput) {
+                    numberInput.value = changedElement.value;
+                }
+            }
+            
+            if (isNumber) {
+                const sliderId = changedElement.id + '-slider';
+                const sliderInput = document.getElementById(sliderId);
+                if (sliderInput) {
+                    const clampedValue = clamp(
+                        parseFloat(changedElement.value),
+                        parseFloat(sliderInput.min),
+                        parseFloat(sliderInput.max)
+                    );
+                    changedElement.value = clampedValue;
+                    sliderInput.value = clampedValue;
+                }
+            }
+        }
+
+        // =============================================================================
+        // EXPORT SYSTEM
+        // =============================================================================
+        
+        /**
+         * Generate CSS custom properties for all families
+         */
+        function generateCSSExport() {
+            let css = ':root {\n';
+            
+            state.families.forEach((family, familyIndex) => {
+                const { min: minHsl, max: maxHsl } = calculateClampedTargets(
+                    family.base, state.transforms.min, state.transforms.max
+                );
+                const swatches = generateFamilySwatches(
+                    family.base, minHsl, maxHsl, state.stepsMin, state.stepsMax, state.curveType
+                );
+                
+                swatches.forEach((hsl, swatchIndex) => {
+                    let colorValue;
+                    switch (state.exportColorSpace) {
+                        case 'hsl':
+                            colorValue = `hsl(${Math.round(hsl[0])}, ${Math.round(hsl[1] * 100)}%, ${Math.round(hsl[2] * 100)}%)`;
+                            break;
+                        case 'hex':
+                            const rgb = hslToRgb(hsl);
+                            colorValue = `#${rgb.map(c => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+                            break;
+                        case 'lch':
+                        default:
+                            const lch = hslToLch(hsl);
+                            colorValue = `lch(${Math.round(lch[0])}% ${Math.round(lch[1])} ${Math.round(lch[2])})`;
+                            break;
+                    }
+                    
+                    css += `  --${family.name}-${swatchIndex + 1}: ${colorValue};\n`;
+                });
+            });
+            
+            css += '}';
+            return css;
+        }
+
+        /**
+         * Update CSS export display
+         */
+        function updateCSSExport() {
+            const css = generateCSSExport();
+            document.getElementById('css-output').textContent = css;
+        }
+
+        /**
+         * Generate SVG export with all families and swatches
+         */
+        function generateSVGExport() {
+            const swatchSize = 60;
+            const familySpacing = 80;
+            const totalWidth = Math.max(...state.families.map((family, familyIndex) => {
+                const { min: minHsl, max: maxHsl } = calculateClampedTargets(
+                    family.base, state.transforms.min, state.transforms.max
+                );
+                const swatches = generateFamilySwatches(
+                    family.base, minHsl, maxHsl, state.stepsMin, state.stepsMax, state.curveType
+                );
+                return swatches.length * swatchSize;
+            }));
+            const totalHeight = state.families.length * familySpacing;
+            
+            let svg = `<svg width="${totalWidth}" height="${totalHeight}" xmlns="http://www.w3.org/2000/svg">`;
+            
+            state.families.forEach((family, familyIndex) => {
+                const { min: minHsl, max: maxHsl } = calculateClampedTargets(
+                    family.base, state.transforms.min, state.transforms.max
+                );
+                const swatches = generateFamilySwatches(
+                    family.base, minHsl, maxHsl, state.stepsMin, state.stepsMax, state.curveType
+                );
+                
+                const y = familyIndex * familySpacing;
+                
+                // Family name
+                svg += `<text x="0" y="${y + 15}" font-family="Arial, sans-serif" font-size="12" fill="#333">${family.name}</text>`;
+                
+                // Color swatches
+                swatches.forEach((hsl, swatchIndex) => {
+                    const x = swatchIndex * swatchSize;
+                    const color = `hsl(${hsl[0]}, ${hsl[1] * 100}%, ${hsl[2] * 100}%)`;
+                    svg += `<rect x="${x}" y="${y + 20}" width="${swatchSize}" height="${swatchSize}" fill="${color}" stroke="#fff" stroke-width="1"/>`;
+                    svg += `<text x="${x + swatchSize/2}" y="${y + 90}" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#666">${family.name}-${swatchIndex + 1}</text>`;
+                });
+            });
+            
+            svg += '</svg>';
+            return svg;
+        }
+
+        /**
+         * Copy text to clipboard with fallback for older browsers
+         */
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                console.log('Copied to clipboard');
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+                // Fallback for older browsers
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            }
+        }
+
+        // =============================================================================
+        // EVENT HANDLERS
+        // =============================================================================
+        
+        /**
+         * Handle all input changes with real-time updates
+         */
+        document.addEventListener('input', (e) => {
+            if (e.target.matches('input[type="number"], input[type="range"]')) {
+                syncInputs(e.target);
+                
+                // Route input changes to appropriate handlers
+                if (e.target.id.startsWith('transform-')) {
+                    const [, direction, channel] = e.target.id.split('-');
+                    state.transforms[direction][channel] = parseFloat(e.target.value);
+                    updateAllFamilies();
+                    
+                } else if (e.target.id === 'family-count') {
+                    const newCount = parseInt(e.target.value);
+                    
+                    // Add families if needed
+                    while (state.families.length < newCount) {
+                        addFamily();
+                    }
+                    
+                    // Remove families if needed
+                    while (state.families.length > newCount) {
+                        const lastIndex = state.families.length - 1;
+                        document.querySelector(`.family-${lastIndex}`).remove();
+                        state.families.pop();
+                    }
+                    updateCSSExport();
+                    
+                } else if (e.target.id === 'steps-min') {
+                    state.stepsMin = parseInt(e.target.value);
+                    updateAllFamilies();
+                    
+                } else if (e.target.id === 'steps-max') {
+                    state.stepsMax = parseInt(e.target.value);
+                    updateAllFamilies();
+                    
+                } else if (e.target.id.startsWith('base-')) {
+                    // Handle base color changes for selected family
+                    if (state.selectedFamily !== null) {
+                        const channel = e.target.id.split('-')[1];
+                        const family = state.families[state.selectedFamily];
+                        const currentLch = hslToLch(family.base);
+                        
+                        if (channel === 'l') currentLch[0] = parseFloat(e.target.value);
+                        if (channel === 'c') currentLch[1] = parseFloat(e.target.value);
+                        if (channel === 'h') currentLch[2] = parseFloat(e.target.value);
+                        
+                        family.base = lchToHsl(currentLch[0], currentLch[1], currentLch[2]);
+                        
+                        // Update name if not custom
+                        if (!family.nameIsCustom) {
+                            family.name = generateColorName(family.base);
+                            document.getElementById('family-name').value = family.name;
+                            document.querySelector(`.family-${state.selectedFamily} .family-name`).textContent = family.name;
+                        }
+                        
+                        updateFamilyDisplay(state.selectedFamily);
+                        updateCSSExport();
+                    }
+                    
+                } else if (e.target.id === 'family-name') {
+                    // Handle family name changes
+                    if (state.selectedFamily !== null) {
+                        const family = state.families[state.selectedFamily];
+                        family.name = e.target.value;
+                        family.nameIsCustom = true;
+                        e.target.style.opacity = '1';
+                        document.querySelector(`.family-${state.selectedFamily} .family-name`).textContent = family.name;
+                        document.querySelector(`.family-${state.selectedFamily} .family-name`).style.opacity = '1';
+                        updateCSSExport();
+                    }
+                }
+            }
+        });
+
+        /**
+         * Handle dropdown changes
+         */
+        document.addEventListener('change', (e) => {
+            if (e.target.id === 'color-space') {
+                state.exportColorSpace = e.target.value;
+                updateCSSExport();
+            }
+        });
+
+        // =============================================================================
+        // ALIGNMENT FUNCTIONS
+        // =============================================================================
+        
+        /**
+         * Align all families' lightness to first family
+         */
+        document.getElementById('align-l').addEventListener('click', () => {
+            if (state.families.length > 0) {
+                const firstFamilyLch = hslToLch(state.families[0].base);
+                state.families.forEach((family, index) => {
+                    if (index > 0) {
+                        const familyLch = hslToLch(family.base);
+                        familyLch[0] = firstFamilyLch[0];
+                        family.base = lchToHsl(familyLch[0], familyLch[1], familyLch[2]);
+                        
+                        if (!family.nameIsCustom) {
+                            family.name = generateColorName(family.base);
+                            document.querySelector(`.family-${index} .family-name`).textContent = family.name;
+                        }
+                    }
+                });
+                updateAllFamilies();
+                if (state.selectedFamily !== null) {
+                    selectFamily(state.selectedFamily);
+                }
+            }
+        });
+
+        /**
+         * Align all families' chroma to first family
+         */
+        document.getElementById('align-c').addEventListener('click', () => {
+            if (state.families.length > 0) {
+                const firstFamilyLch = hslToLch(state.families[0].base);
+                state.families.forEach((family, index) => {
+                    if (index > 0) {
+                        const familyLch = hslToLch(family.base);
+                        familyLch[1] = firstFamilyLch[1];
+                        family.base = lchToHsl(familyLch[0], familyLch[1], familyLch[2]);
+                        
+                        if (!family.nameIsCustom) {
+                            family.name = generateColorName(family.base);
+                            document.querySelector(`.family-${index} .family-name`).textContent = family.name;
+                        }
+                    }
+                });
+                updateAllFamilies();
+                if (state.selectedFamily !== null) {
+                    selectFamily(state.selectedFamily);
+                }
+            }
+        });
+
+        /**
+         * Distribute all families evenly across hue spectrum
+         */
+        document.getElementById('align-h').addEventListener('click', () => {
+            if (state.families.length > 1) {
+                const step = 360 / state.families.length;
+                state.families.forEach((family, index) => {
+                    const familyLch = hslToLch(family.base);
+                    familyLch[2] = (index * step) % 360;
+                    family.base = lchToHsl(familyLch[0], familyLch[1], familyLch[2]);
+                    
+                    if (!family.nameIsCustom) {
+                        family.name = generateColorName(family.base);
+                        document.querySelector(`.family-${index} .family-name`).textContent = family.name;
+                    }
+                });
+                updateAllFamilies();
+                if (state.selectedFamily !== null) {
+                    selectFamily(state.selectedFamily);
+                }
+            }
+        });
+
+        /**
+         * Reset family name to auto-generated
+         */
+        document.getElementById('reset-name').addEventListener('click', () => {
+            if (state.selectedFamily !== null) {
+                const family = state.families[state.selectedFamily];
+                family.nameIsCustom = false;
+                family.name = generateColorName(family.base);
+                
+                document.getElementById('family-name').value = family.name;
+                document.getElementById('family-name').style.opacity = '0.6';
+                document.querySelector(`.family-${state.selectedFamily} .family-name`).textContent = family.name;
+                document.querySelector(`.family-${state.selectedFamily} .family-name`).style.opacity = '0.6';
+                updateCSSExport();
+            }
+        });
+
+        // =============================================================================
+        // EXPORT EVENT HANDLERS
+        // =============================================================================
+        
+        /**
+         * Copy CSS to clipboard
+         */
+        document.getElementById('copy-css').addEventListener('click', () => {
+            const css = generateCSSExport();
+            copyToClipboard(css);
+        });
+
+        /**
+         * Copy SVG to clipboard
+         */
+        document.getElementById('copy-svg').addEventListener('click', () => {
+            const svg = generateSVGExport();
+            copyToClipboard(svg);
+        });
+
+        /**
+         * Download SVG file
+         */
+        document.getElementById('download-svg').addEventListener('click', () => {
+            const svg = generateSVGExport();
+            const blob = new Blob([svg], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'color-palette.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // =============================================================================
+        // APPLICATION INITIALIZATION
+        // =============================================================================
+        
+        /**
+         * Initialize the application
+         * Sets up UI components and creates initial color family
+         */
+        function init() {
+            console.log('Initializing Color Palette Generator...');
+            
+            // Initialize custom curve dropdown with visual icons
+            createCustomCurveDropdown();
+            
+            // Create initial color family
+            addFamily();
+            
+            // Select first family after brief delay to ensure DOM updates
+            setTimeout(() => {
+                if (state.families.length > 0) {
+                    selectFamily(0);
+                }
+                
+                // Generate initial CSS export
+                updateCSSExport();
+                
+                console.log('Color Palette Generator initialized successfully!');
+                console.log(`Families: ${state.families.length}`);
+            }, 100);
+        }
+
+        /**
+         * Start the application when DOM is ready
+         */
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Palette Generator</title>
+    <meta name="description" content="Generate mathematical color palettes with easing curves in LCH color space">
+    <style>
+        /**
+         * Color Palette Generator Styles
+         * Minimal styling using browser defaults with functional layout
+         */
+        
+        /* CSS Reset and minimal layout only */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.5;
+        }
+        
+        /* Three-column layout - core application structure */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        .left-column {
+            width: 300px;
+            padding: 20px;
+            border-right: 1px solid #ccc;
+            overflow-y: auto;
+        }
+        
+        .center-column {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .right-column {
+            width: 300px;
+            padding: 20px;
+            border-left: 1px solid #ccc;
+            overflow-y: auto;
+        }
+        
+        /* Form elements spacing */
+        .left-column > * {
+            margin-bottom: 15px;
+        }
+        
+        fieldset {
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        input[type="number"], input[type="range"], input[type="text"] {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+        
+        /* Color family display */
+        .family {
+            display: flex;
+            margin-bottom: 10px;
+            border: 2px solid transparent;
+            cursor: pointer;
+        }
+        
+        .family.selected {
+            border-color: #007bff;
+        }
+        
+        .family-name {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            padding: 10px 5px;
+            background: #f8f9fa;
+            min-width: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        
+        .swatches {
+            display: flex;
+            flex: 1;
+        }
+        
+        .swatch {
+            flex: 1;
+            height: 100px;
+            min-width: 20px;
+        }
+        
+        /* Custom curve dropdown component */
+        .curve-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .curve-dropdown-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            width: 100%;
+            padding: 8px;
+        }
+        
+        .curve-dropdown-button svg.chevron {
+            margin-left: auto;
+        }
+        
+        .curve-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 1px solid #ccc;
+            min-width: 180px;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .curve-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        
+        .curve-option:hover,
+        .curve-option.selected {
+            background-color: #f0f0f0;
+        }
+        
+        /* Button groups */
+        .align-controls button {
+            margin-right: 5px;
+        }
+        
+        /* CSS export display */
+        .css-export {
+            border: 1px solid #ccc;
+            padding: 10px;
+            position: relative;
+        }
+        
+        .css-export-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        #css-output {
+            font-family: monospace;
+            font-size: 11px;
+            white-space: pre;
+            background: #f8f9fa;
+            padding: 10px;
+            border: 1px solid #ddd;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        /* Hide family controls initially */
+        #selected-family-controls {
+            display: none;
+        }
+        
+        /* LCH color space ranges reference */
+        .lch-ranges {
+            background: #f8f9fa;
+            padding: 10px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- LEFT COLUMN: Global Controls -->
+        <div class="left-column">
+            <!-- LCH Color Space Reference -->
+            <div class="lch-ranges">
+                <div>L: 0-100</div>
+                <div>C: 0-150</div>  
+                <div>H: 0-360</div>
+            </div>
+            
+            <!-- Family Count Control -->
+            <label>Family Count: 
+                <input type="number" id="family-count" min="1" max="21" value="1">
+            </label>
+            
+            <!-- Variation Step Controls -->
+            <label>Steps toward Min: 
+                <input type="number" id="steps-min" min="0" max="21" value="3">
+            </label>
+            
+            <label>Steps toward Max: 
+                <input type="number" id="steps-max" min="0" max="21" value="3">
+            </label>
+            
+            <!-- Transform Min Controls (Delta values for min target calculation) -->
+            <fieldset class="transform-controls">
+                <legend>Transform Min</legend>
+                <label>L: 
+                    <input type="number" id="transform-min-l" value="-42" min="-100" max="100">
+                    <input type="range" id="transform-min-l-slider" min="-100" max="100" value="-42">
+                </label>
+                <label>C: 
+                    <input type="number" id="transform-min-c" value="8" min="-150" max="150">
+                    <input type="range" id="transform-min-c-slider" min="-150" max="150" value="8">
+                </label>
+                <label>H: 
+                    <input type="number" id="transform-min-h" value="-4" min="-360" max="360">
+                    <input type="range" id="transform-min-h-slider" min="-360" max="360" value="-4">
+                </label>
+            </fieldset>
+            
+            <!-- Transform Max Controls (Delta values for max target calculation) -->
+            <fieldset class="transform-controls">
+                <legend>Transform Max</legend>
+                <label>L: 
+                    <input type="number" id="transform-max-l" value="42" min="-100" max="100">
+                    <input type="range" id="transform-max-l-slider" min="-100" max="100" value="42">
+                </label>
+                <label>C: 
+                    <input type="number" id="transform-max-c" value="-8" min="-150" max="150">
+                    <input type="range" id="transform-max-c-slider" min="-150" max="150" value="-8">
+                </label>
+                <label>H: 
+                    <input type="number" id="transform-max-h" value="4" min="-360" max="360">
+                    <input type="range" id="transform-max-h-slider" min="-360" max="360" value="4">
+                </label>
+            </fieldset>
+            
+            <!-- Easing Curve Selection -->
+            <div class="curve-selection">
+                <label for="curve-select">Curve:</label>
+                <div id="curve-select" class="curve-dropdown">
+                    <!-- Populated by JavaScript with visual curve icons -->
+                </div>
+            </div>
+            
+            <!-- Family Alignment Controls -->
+            <div class="align-controls">
+                <button id="align-l">L</button>
+                <button id="align-c">C</button>
+                <button id="align-h">H</button>
+            </div>
+            
+            <!-- SVG Export Controls -->
+            <div>
+                <button id="download-svg">📥 SVG</button>
+                <button id="copy-svg">📋 SVG</button>
+            </div>
+            
+            <!-- CSS Export Controls -->
+            <div class="css-export">
+                <div class="css-export-controls">
+                    <select id="color-space">
+                        <option value="lch" selected>LCH</option>
+                        <option value="hex">Hex</option>
+                        <option value="hsl">HSL</option>
+                        <option value="rgb">RGB</option>
+                    </select>
+                    <button id="copy-css">📋 CSS</button>
+                </div>
+                <pre id="css-output">/* CSS will appear here */</pre>
+            </div>
+        </div>
+
+        <!-- CENTER COLUMN: Color Family Display -->
+        <div class="center-column" id="families-container">
+            <!-- Color families are dynamically generated here -->
+        </div>
+
+        <!-- RIGHT COLUMN: Selected Family Controls -->
+        <div class="right-column" id="family-controls">
+            <div id="selected-family-controls">
+                <label>Family Name: 
+                    <input type="text" id="family-name">
+                    <button id="reset-name">🔄</button>
+                </label>
+                
+                <label>L: 
+                    <input type="number" id="base-l" min="0" max="100">
+                    <input type="range" id="base-l-slider" min="0" max="100">
+                </label>
+                <label>C: 
+                    <input type="number" id="base-c" min="0" max="150">
+                    <input type="range" id="base-c-slider" min="0" max="150">
+                </label>
+                <label>H: 
+                    <input type="number" id="base-h" min="0" max="360">
+                    <input type="range" id="base-h-slider" min="0" max="360">
+                </label>
+            </div>
+        </div>
+    </div> selected>LCH</option>
+                        <option value="hex">Hex</option>
+                        <option value="hsl">HSL</option>
+                        <option value="rgb">RGB</option>
+                    </select>
+                    <button id="copy-css">📋 CSS</button>
+                </div>
+                <pre id="css-output">/* CSS will appear here */</pre>
+            </div>
+        </div>
+
+        <!-- CENTER COLUMN -->
+        <div class="center-column" id="families-container">
+            <!-- Families generated here -->
+        </div>
+
+        <!-- RIGHT COLUMN -->  
+        <div class="right-column" id="family-controls">
+            <div id="selected-family-controls">
+                <label>Family Name: 
+                    <input type="text" id="family-name">
+                    <button id="reset-name">🔄</button>
+                </label>
+                
+                <label>L: 
+                    <input type="number" id="base-l" min="0" max="100">
+                    <input type="range" id="base-l-slider" min="0" max="100">
+                </label>
+                <label>C: 
+                    <input type="number" id="base-c" min="0" max="150">
+                    <input type="range" id="base-c-slider" min="0" max="150">
+                </label>
+                <label>H: 
+                    <input type="number" id="base-h" min="0" max="360">
+                    <input type="range" id="base-h-slider" min="0" max="360">
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Use a different CDN for Poline that supports CORS -->
+    <script type="module">
+        // Simplified implementation without Poline dependency for now
+        // We'll create our own easing functions
+        
+        // Global state
+        const state = {
+            families: [],
+            selectedFamily: null,
+            stepsMin: 3,
+            stepsMax: 3,
+            transforms: {
+                min: { l: -42, c: 8, h: -4 },
+                max: { l: 42, c: -8, h: 4 }
+            },
+            curveType: 'sinusoidalPosition',
+            exportColorSpace: 'lch'
+        };
+
+        // Easing functions (simplified versions)
+        const easingFunctions = {
+            linearPosition: (t) => t,
+            quadraticPosition: (t) => t * t,
+            cubicPosition: (t) => t * t * t,
+            sinusoidalPosition: (t) => 0.5 - 0.5 * Math.cos(t * Math.PI),
+            exponentialPosition: (t) => t === 0 ? 0 : Math.pow(2, 10 * (t - 1)),
+            smoothStepPosition: (t) => t * t * (3 - 2 * t)
+        };
+
+        // Utility functions
+        function randomInRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        // Generate random base color within constraints
+        function generateRandomBaseColor() {
+            return [
+                randomInRange(0, 360), // H: full range
+                randomInRange(0.2, 1),  // S: minimum 20% saturation
+                randomInRange(0.4, 0.6) // L: within 10% of middle
+            ];
+        }
+
+        // Simple color name generation
+        function generateColorName(hsl) {
+            const hue = hsl[0];
+            const hueNames = [
+                'red', 'orange', 'yellow', 'lime', 'green', 'teal', 
+                'cyan', 'sky', 'blue', 'purple', 'pink', 'rose'
+            ];
+            const index = Math.floor(hue / 30) % hueNames.length;
+            return hueNames[index];
+        }
+
+        // LCH to HSL conversion (simplified approximation)
+        function lchToHsl(l, c, h) {
+            const lightness = l / 100;
+            const saturation = Math.min(c / 75, 1);
+            const hue = h;
+            return [hue, saturation, lightness];
+        }
+
+        // HSL to LCH conversion (simplified approximation)
+        function hslToLch(hsl) {
+            const l = hsl[2] * 100;
+            const c = hsl[1] * 75;
+            const h = hsl[0];
+            return [l, c, h];
+        }
+
+        // Calculate clamped target colors
+        function calculateClampedTargets(baseHsl, transformMin, transformMax) {
+            const baseLch = hslToLch(baseHsl);
+            
+            const minLch = [
+                clamp(baseLch[0] + transformMin.l, 0, 100),
+                clamp(baseLch[1] + transformMin.c, 0, 150),
+                ((baseLch[2] + transformMin.h) % 360 + 360) % 360
+            ];
+            
+            const maxLch = [
+                clamp(baseLch[0] + transformMax.l, 0, 100),
+                clamp(baseLch[1] + transformMax.c, 0, 150),
+                ((baseLch[2] + transformMax.h) % 360 + 360) % 360
+            ];
+            
+            return {
+                min: lchToHsl(minLch[0], minLch[1], minLch[2]),
+                max: lchToHsl(maxLch[0], maxLch[1], maxLch[2])
+            };
+        }
+
+        // Simple interpolation between two HSL colors
+        function interpolateHSL(color1, color2, t) {
+            // Handle hue wrapping for shortest path
+            let h1 = color1[0];
+            let h2 = color2[0];
+            let deltaH = h2 - h1;
+            
+            if (deltaH > 180) deltaH -= 360;
+            if (deltaH < -180) deltaH += 360;
+            
+            const h = (h1 + deltaH * t + 360) % 360;
+            const s = color1[1] + (color2[1] - color1[1]) * t;
+            const l = color1[2] + (color2[2] - color1[2]) * t;
+            
+            return [h, s, l];
+        }
+
+        // Generate family swatches using custom interpolation
+        function generateFamilySwatches(baseHsl, minHsl, maxHsl, stepsMin, stepsMax, curveType) {
+            const swatches = [];
+            const easingFn = easingFunctions[curveType] || easingFunctions.sinusoidalPosition;
+            
+            // Generate swatches toward Min
+            for (let i = stepsMin; i > 0; i--) {
+                const t = easingFn(i / stepsMin);
+                const swatch = interpolateHSL(baseHsl, minHsl, t);
+                swatches.push(swatch);
+            }
+            
+            // Add base color
+            swatches.push(baseHsl);
+            
+            // Generate swatches toward Max
+            for (let i = 1; i <= stepsMax; i++) {
+                const t = easingFn(i / stepsMax);
+                const swatch = interpolateHSL(baseHsl, maxHsl, t);
+                swatches.push(swatch);
+            }
+            
+            return swatches;
+        }
+
+        // Create SVG curve icon
+        function createCurveIcon(curveType, width = 24, height = 16) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', width);
+            svg.setAttribute('height', height);
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('stroke', 'currentColor');
+            path.setAttribute('stroke-width', '1.5');
+            path.setAttribute('fill', 'none');
+            
+            let pathData;
+            switch(curveType) {
+                case 'linearPosition':
+                    pathData = `M 2 ${height-2} L ${width-2} 2`;
+                    break;
+                case 'quadraticPosition':
+                    pathData = `M 2 ${height-2} Q 6 ${height-2} ${width-2} 2`;
+                    break;
+                case 'quadraticPosition-reverse':
+                    pathData = `M 2 ${height-2} Q ${width-6} 2 ${width-2} 2`;
+                    break;
+                case 'sinusoidalPosition':
+                    pathData = `M 2 ${height-2} Q ${width/4} ${height-2} ${width/2} ${height/2} T ${width-2} 2`;
+                    break;
+                case 'exponentialPosition':
+                    pathData = `M 2 ${height-2} Q 2 ${height/2} ${width-2} 2`;
+                    break;
+                case 'cubicPosition':
+                    pathData = `M 2 ${height-2} C 2 ${height-2} 8 ${height-6} ${width-2} 2`;
+                    break;
+                case 'smoothStepPosition':
+                    pathData = `M 2 ${height-2} C 8 ${height-2} ${width-8} 2 ${width-2} 2`;
+                    break;
+                default:
+                    pathData = `M 2 ${height-2} L ${width-2} 2`;
+            }
+            
+            path.setAttribute('d', pathData);
+            svg.appendChild(path);
+            return svg;
+        }
+
+        // Create custom curve dropdown
+        function createCustomCurveDropdown() {
+            const container = document.getElementById('curve-select');
+            
+            // Clear any existing content
+            container.innerHTML = '';
+            
+            const button = document.createElement('button');
+            button.className = 'curve-dropdown-button';
+            button.type = 'button';
+            button.innerHTML = `
+                ${createCurveIcon('sinusoidalPosition').outerHTML}
+                <span>Ease In Out</span>
+                <svg class="chevron" width="12" height="8" viewBox="0 0 12 8">
+                    <path d="M2 2 L6 6 L10 2" stroke="currentColor" fill="none" stroke-width="1.5"/>
+                </svg>
+            `;
+            
+            const dropdown = document.createElement('div');
+            dropdown.className = 'curve-dropdown-menu';
+            dropdown.style.display = 'none';
+            
+            const curves = [
+                { value: 'linearPosition', label: 'Linear' },
+                { value: 'quadraticPosition', label: 'Ease In' },
+                { value: 'quadraticPosition', label: 'Ease Out', reverse: true },
+                { value: 'sinusoidalPosition', label: 'Ease In Out', selected: true },
+                { value: 'exponentialPosition', label: 'Exponential' },
+                { value: 'cubicPosition', label: 'Cubic' },
+                { value: 'smoothStepPosition', label: 'Smooth Step' }
+            ];
+            
+            curves.forEach(curve => {
+                const option = document.createElement('div');
+                option.className = 'curve-option';
+                option.setAttribute('data-value', curve.value);
+                if (curve.reverse) option.setAttribute('data-reverse', 'true');
+                if (curve.selected) option.classList.add('selected');
+                
+                const iconType = curve.reverse ? `${curve.value}-reverse` : curve.value;
+                option.innerHTML = `
+                    ${createCurveIcon(iconType).outerHTML}
+                    <span>${curve.label}</span>
+                `;
+                
+                option.addEventListener('click', () => {
+                    selectCurve(curve.value, curve.reverse, curve.label, iconType);
+                    closeDropdown();
+                });
+                
+                dropdown.appendChild(option);
+            });
+            
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleDropdown();
+            });
+            
+            document.addEventListener('click', (e) => {
+                if (!container.contains(e.target)) {
+                    closeDropdown();
+                }
+            });
+            
+            container.appendChild(button);
+            container.appendChild(dropdown);
+            
+            function toggleDropdown() {
+                const isOpen = dropdown.style.display !== 'none';
+                dropdown.style.display = isOpen ? 'none' : 'block';
+                button.setAttribute('aria-expanded', !isOpen);
+            }
+            
+            function closeDropdown() {
+                dropdown.style.display = 'none';
+                button.setAttribute('aria-expanded', 'false');
+            }
+            
+            function selectCurve(value, reverse, label, iconType) {
+                button.innerHTML = `
+                    ${createCurveIcon(iconType).outerHTML}
+                    <span>${label}</span>
+                    <svg class="chevron" width="12" height="8" viewBox="0 0 12 8">
+                        <path d="M2 2 L6 6 L10 2" stroke="currentColor" fill="none" stroke-width="1.5"/>
+                    </svg>
+                `;
+                
+                dropdown.querySelectorAll('.curve-option').forEach(opt => opt.classList.remove('selected'));
+                dropdown.querySelector(`[data-value="${value}"]${reverse ? '[data-reverse="true"]' : ':not([data-reverse])'}`)?.classList.add('selected');
+                
+                state.curveType = value;
+                updateAllFamilies();
+            }
+        }
+
+        // Create family HTML
+        function createFamilyHTML(index, baseHsl, name, nameIsCustom) {
+            const nameOpacity = nameIsCustom ? '1' : '0.6';
+            const family = document.createElement('div');
+            family.className = `family family-${index}`;
+            family.setAttribute('data-family-index', index);
+            
+            family.innerHTML = `
+                <div class="family-name" style="opacity: ${nameOpacity}">${name}</div>
+                <div class="swatches"></div>
+            `;
+            
+            family.addEventListener('click', () => selectFamily(index));
+            
+            return family;
+        }
+
+        // Update family display
+        function updateFamilyDisplay(familyIndex) {
+            const family = state.families[familyIndex];
+            const { min: minHsl, max: maxHsl } = calculateClampedTargets(family.base, state.transforms.min, state.transforms.max);
+            const swatches = generateFamilySwatches(family.base, minHsl, maxHsl, state.stepsMin, state.stepsMax, state.curveType);
+            
+            const familyElement = document.querySelector(`.family-${familyIndex}`);
+            const swatchesContainer = familyElement.querySelector('.swatches');
+            
+            swatchesContainer.innerHTML = '';
+            swatches.forEach((hsl, swatchIndex) => {
+                const swatch = document.createElement('div');
+                swatch.className = 'swatch';
+                swatch.style.backgroundColor = `hsl(${hsl[0]}, ${hsl[1] * 100}%, ${hsl[2] * 100}%)`;
+                swatch.title = `${family.name}-${swatchIndex + 1}`;
+                swatchesContainer.appendChild(swatch);
+            });
+        }
+
+        // Select family
+        function selectFamily(familyIndex) {
+            // Remove previous selection
+            document.querySelectorAll('.family').forEach(f => f.classList.remove('selected'));
+            
+            // Select new family
+            const familyElement = document.querySelector(`.family-${familyIndex}`);
+            familyElement.classList.add('selected');
+            
+            state.selectedFamily = familyIndex;
+            
+            // Show controls
+            const controls = document.getElementById('selected-family-controls');
+            controls.style.display = 'block';
+            
+            // Update control values
+            const family = state.families[familyIndex];
+            const baseLch = hslToLch(family.base);
+            
+            document.getElementById('family-name').value = family.name;
+            document.getElementById('family-name').style.opacity = family.nameIsCustom ? '1' : '0.6';
+            
+            document.getElementById('base-l').value = Math.round(baseLch[0]);
+            document.getElementById('base-l-slider').value = Math.round(baseLch[0]);
+            document.getElementById('base-c').value = Math.round(baseLch[1]);
+            document.getElementById('base-c-slider').value = Math.round(baseLch[1]);
+            document.getElementById('base-h').value = Math.round(baseLch[2]);
+            document.getElementById('base-h-slider').value = Math.round(baseLch[2]);
+        }
+
+        // Add family with error handling
+        function addFamily() {
+            try {
+                const familyIndex = state.families.length;
+                const baseHsl = generateRandomBaseColor();
+                const name = generateColorName(baseHsl);
+                
+                const family = {
+                    base: baseHsl,
+                    name: name,
+                    nameIsCustom: false
+                };
+                
+                state.families.push(family);
+                
+                const familyElement = createFamilyHTML(familyIndex, baseHsl, name, false);
+                document.getElementById('families-container').appendChild(familyElement);
+                
+                updateFamilyDisplay(familyIndex);
+                updateCSSExport();
+                
+                console.log('Added family:', family);
+            } catch (error) {
+                console.error('Error adding family:', error);
+            }
+        }
+
+        // Update all families
+        function updateAllFamilies() {
+            state.families.forEach((_, index) => {
+                updateFamilyDisplay(index);
+            });
+            updateCSSExport();
+        }
+
+        // Sync inputs
+        function syncInputs(changedElement) {
+            const isSlider = changedElement.type === 'range';
+            const isNumber = changedElement.type === 'number';
+            
+            if (isSlider) {
+                const numberId = changedElement.id.replace('-slider', '');
+                const numberInput = document.getElementById(numberId);
+                if (numberInput) {
+                    numberInput.value = changedElement.value;
+                }
+            }
+            
+            if (isNumber) {
+                const sliderId = changedElement.id + '-slider';
+                const sliderInput = document.getElementById(sliderId);
+                if (sliderInput) {
+                    const clampedValue = clamp(
+                        parseFloat(changedElement.value),
+                        parseFloat(sliderInput.min),
+                        parseFloat(sliderInput.max)
+                    );
+                    changedElement.value = clampedValue;
+                    sliderInput.value = clampedValue;
+                }
+            }
+        }
+
+        // Generate CSS export
+        function generateCSSExport() {
+            let css = ':root {\n';
+            
+            state.families.forEach((family, familyIndex) => {
+                const { min: minHsl, max: maxHsl } = calculateClampedTargets(family.base, state.transforms.min, state.transforms.max);
+                const swatches = generateFamilySwatches(family.base, minHsl, maxHsl, state.stepsMin, state.stepsMax, state.curveType);
+                
+                swatches.forEach((hsl, swatchIndex) => {
+                    let colorValue;
+                    switch (state.exportColorSpace) {
+                        case 'hsl':
+                            colorValue = `hsl(${Math.round(hsl[0])}, ${Math.round(hsl[1] * 100)}%, ${Math.round(hsl[2] * 100)}%)`;
+                            break;
+                        case 'hex':
+                            // Simple RGB conversion for hex
+                            const rgb = hslToRgb(hsl);
+                            colorValue = `#${rgb.map(c => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+                            break;
+                        case 'lch':
+                        default:
+                            const lch = hslToLch(hsl);
+                            colorValue = `lch(${Math.round(lch[0])}% ${Math.round(lch[1])} ${Math.round(lch[2])})`;
+                            break;
+                    }
+                    
+                    css += `  --${family.name}-${swatchIndex + 1}: ${colorValue};\n`;
+                });
+            });
+            
+            css += '}';
+            return css;
+        }
+
+        // Simple HSL to RGB conversion
+        function hslToRgb(hsl) {
+            const h = hsl[0] / 360;
+            const s = hsl[1];
+            const l = hsl[2];
+            
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            
+            return [r * 255, g * 255, b * 255];
+        }
+
+        // Update CSS export display
+        function updateCSSExport() {
+            const css = generateCSSExport();
+            document.getElementById('css-output').textContent = css;
+        }
+
+        // Copy to clipboard
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                console.log('Copied to clipboard');
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+                // Fallback for older browsers
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            }
+        }
+
+        // Event listeners
+        document.addEventListener('input', (e) => {
+            if (e.target.matches('input[type="number"], input[type="range"]')) {
+                syncInputs(e.target);
+                
+                // Update state based on which input changed
+                if (e.target.id.startsWith('transform-')) {
+                    const [, direction, channel] = e.target.id.split('-');
+                    state.transforms[direction][channel] = parseFloat(e.target.value);
+                    updateAllFamilies();
+                } else if (e.target.id === 'family-count') {
+                    const newCount = parseInt(e.target.value);
+                    while (state.families.length < newCount) {
+                        addFamily();
+                    }
+                    while (state.families.length > newCount) {
+                        const lastIndex = state.families.length - 1;
+                        document.querySelector(`.family-${lastIndex}`).remove();
+                        state.families.pop();
+                    }
+                    updateCSSExport();
+                } else if (e.target.id === 'steps-min') {
+                    state.stepsMin = parseInt(e.target.value);
+                    updateAllFamilies();
+                } else if (e.target.id === 'steps-max') {
+                    state.stepsMax = parseInt(e.target.value);
+                    updateAllFamilies();
+                } else if (e.target.id.startsWith('base-')) {
+                    if (state.selectedFamily !== null) {
+                        const channel = e.target.id.split('-')[1];
+                        const family = state.families[state.selectedFamily];
+                        const currentLch = hslToLch(family.base);
+                        
+                        if (channel === 'l') currentLch[0] = parseFloat(e.target.value);
+                        if (channel === 'c') currentLch[1] = parseFloat(e.target.value);
+                        if (channel === 'h') currentLch[2] = parseFloat(e.target.value);
+                        
+                        family.base = lchToHsl(currentLch[0], currentLch[1], currentLch[2]);
+                        
+                        // Update name if not custom
+                        if (!family.nameIsCustom) {
+                            family.name = generateColorName(family.base);
+                            document.getElementById('family-name').value = family.name;
+                            document.querySelector(`.family-${state.selectedFamily} .family-name`).textContent = family.name;
+                        }
+                        
+                        updateFamilyDisplay(state.selectedFamily);
+                        updateCSSExport();
+                    }
+                } else if (e.target.id === 'family-name') {
+                    if (state.selectedFamily !== null) {
+                        const family = state.families[state.selectedFamily];
+                        family.name = e.target.value;
+                        family.nameIsCustom = true;
+                        e.target.style.opacity = '1';
+                        document.querySelector(`.family-${state.selectedFamily} .family-name`).textContent = family.name;
+                        document.querySelector(`.family-${state.selectedFamily} .family-name`).style.opacity = '1';
+                        updateCSSExport();
+                    }
+                }
+            }
+        });
+
+        document.addEventListener('change', (e) => {
+            if (e.target.id === 'color-space') {
+                state.exportColorSpace = e.target.value;
+                updateCSSExport();
+            }
+        });
+
+        // Alignment buttons
+        document.getElementById('align-l').addEventListener('click', () => {
+            if (state.families.length > 0) {
+                const firstFamilyLch = hslToLch(state.families[0].base);
+                state.families.forEach((family, index) => {
+                    if (index > 0) {
+                        const familyLch = hslToLch(family.base);
+                        familyLch[0] = firstFamilyLch[0];
+                        family.base = lchToHsl(familyLch[0], familyLch[1], familyLch[2]);
+                        
+                        if (!family.nameIsCustom) {
+                            family.name = generateColorName(family.base);
+                            document.querySelector(`.family-${index} .family-name`).textContent = family.name;
+                        }
+                    }
+                });
+                updateAllFamilies();
+                if (state.selectedFamily !== null) {
+                    selectFamily(state.selectedFamily);
+                }
+            }
+        });
+
+        document.getElementById('align-c').addEventListener('click', () => {
+            if (state.families.length > 0) {
+                const firstFamilyLch = hslToLch(state.families[0].base);
+                state.families.forEach((family, index) => {
+                    if (index > 0) {
+                        const familyLch = hslToLch(family.base);
+                        familyLch[1] = firstFamilyLch[1];
+                        family.base = lchToHsl(familyLch[0], familyLch[1], familyLch[2]);
+                        
+                        if (!family.nameIsCustom) {
+                            family.name = generateColorName(family.base);
+                            document.querySelector(`.family-${index} .family-name`).textContent = family.name;
+                        }
+                    }
+                });
+                updateAllFamilies();
+                if (state.selectedFamily !== null) {
+                    selectFamily(state.selectedFamily);
+                }
+            }
+        });
+
+        document.getElementById('align-h').addEventListener('click', () => {
+            if (state.families.length > 1) {
+                const step = 360 / state.families.length;
+                state.families.forEach((family, index) => {
+                    const familyLch = hslToLch(family.base);
+                    familyLch[2] = (index * step) % 360;
+                    family.base = lchToHsl(familyLch[0], familyLch[1], familyLch[2]);
+                    
+                    if (!family.nameIsCustom) {
+                        family.name = generateColorName(family.base);
+                        document.querySelector(`.family-${index} .family-name`).textContent = family.name;
+                    }
+                });
+                updateAllFamilies();
+                if (state.selectedFamily !== null) {
+                    selectFamily(state.selectedFamily);
+                }
+            }
+        });
+
+        // Reset name button
+        document.getElementById('reset-name').addEventListener('click', () => {
+            if (state.selectedFamily !== null) {
+                const family = state.families[state.selectedFamily];
+                family.nameIsCustom = false;
+                family.name = generateColorName(family.base);
+                
+                document.getElementById('family-name').value = family.name;
+                document.getElementById('family-name').style.opacity = '0.6';
+                document.querySelector(`.family-${state.selectedFamily} .family-name`).textContent = family.name;
+                document.querySelector(`.family-${state.selectedFamily} .family-name`).style.opacity = '0.6';
+                updateCSSExport();
+            }
+        });
+
+        // Export buttons
+        document.getElementById('copy-css').addEventListener('click', () => {
+            const css = generateCSSExport();
+            copyToClipboard(css);
+        });
+
+        document.getElementById('copy-svg').addEventListener('click', () => {
+            const svg = generateSVGExport();
+            copyToClipboard(svg);
+        });
+
+        document.getElementById('download-svg').addEventListener('click', () => {
+            const svg = generateSVGExport();
+            const blob = new Blob([svg], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'color-palette.svg';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Generate SVG export
+        function generateSVGExport() {
+            const swatchSize = 60;
+            const familySpacing = 80;
+            const totalWidth = Math.max(...state.families.map((family, familyIndex) => {
+                const { min: minHsl, max: maxHsl } = calculateClampedTargets(family.base, state.transforms.min, state.transforms.max);
+                const swatches = generateFamilySwatches(family.base, minHsl, maxHsl, state.stepsMin, state.stepsMax, state.curveType);
+                return swatches.length * swatchSize;
+            }));
+            const totalHeight = state.families.length * familySpacing;
+            
+            let svg = `<svg width="${totalWidth}" height="${totalHeight}" xmlns="http://www.w3.org/2000/svg">`;
+            
+            state.families.forEach((family, familyIndex) => {
+                const { min: minHsl, max: maxHsl } = calculateClampedTargets(family.base, state.transforms.min, state.transforms.max);
+                const swatches = generateFamilySwatches(family.base, minHsl, maxHsl, state.stepsMin, state.stepsMax, state.curveType);
+                
+                const y = familyIndex * familySpacing;
+                
+                // Family name
+                svg += `<text x="0" y="${y + 15}" font-family="Arial, sans-serif" font-size="12" fill="#333">${family.name}</text>`;
+                
+                // Swatches
+                swatches.forEach((hsl, swatchIndex) => {
+                    const x = swatchIndex * swatchSize;
+                    const color = `hsl(${hsl[0]}, ${hsl[1] * 100}%, ${hsl[2] * 100}%)`;
+                    svg += `<rect x="${x}" y="${y + 20}" width="${swatchSize}" height="${swatchSize}" fill="${color}" stroke="#fff" stroke-width="1"/>`;
+                    svg += `<text x="${x + swatchSize/2}" y="${y + 90}" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#666">${family.name}-${swatchIndex + 1}</text>`;
+                });
+            });
+            
+            svg += '</svg>';
+            return svg;
+        }
+
+        // Initialize application
+        function init() {
+            console.log('Initializing app...');
+            
+            // Initialize curve dropdown first
+            createCustomCurveDropdown();
+            
+            // Create initial family
+            addFamily();
+            
+            // Select first family if exists
+            setTimeout(() => {
+                if (state.families.length > 0) {
+                    selectFamily(0);
+                }
+                
+                // Update initial CSS export
+                updateCSSExport();
+                
+                console.log('App initialized. Families:', state.families.length);
+            }, 100);
+        }
+
+        // Start the application when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+{
+	"name": "color-palette-generator",
+	"version": "1.0.0",
+	"description": "A sophisticated color palette generator that creates tonal variations within hue families using mathematical easing curves",
+	"main": "index.html",
+	"scripts": {
+		"start": "python -m http.server 8000",
+		"serve": "python -m http.server 8000",
+		"dev": "python -m http.server 8000"
+	},
+	"keywords": [
+		"color",
+		"palette",
+		"generator",
+		"lch",
+		"design",
+		"css",
+		"easing",
+		"interpolation",
+		"color-theory",
+		"design-systems"
+	],
+	"author": "Your Name",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/yourusername/color-palette-generator.git"
+	},
+	"bugs": {
+		"url": "https://github.com/yourusername/color-palette-generator/issues"
+	},
+	"homepage": "https://github.com/yourusername/color-palette-generator#readme",
+	"devDependencies": {},
+	"dependencies": {},
+	"engines": {
+		"node": ">=14.0.0"
+	},
+	"browserslist": [
+		"last 2 versions",
+		"> 1%",
+		"not dead"
+	]
+}
