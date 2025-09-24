@@ -1,0 +1,144 @@
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+body {
+	font-family: system-ui, -apple-system, sans-serif;
+	line-height: 1.5;
+}
+.app-container {
+	display: flex;
+	min-height: 100vh;
+}
+.left-column {
+	width: 300px;
+	padding: 20px;
+	border-right: 1px solid #ccc;
+	overflow-y: auto;
+}
+.center-column {
+	flex: 1;
+	padding: 20px;
+	overflow-y: auto;
+}
+.right-column {
+	width: 300px;
+	padding: 20px;
+	border-left: 1px solid #ccc;
+	overflow-y: auto;
+}
+.left-column > * {
+	margin-bottom: 15px;
+}
+fieldset {
+	border: 1px solid #ccc;
+	padding: 10px;
+}
+label {
+	display: block;
+	margin-bottom: 5px;
+}
+input[type='number'],
+input[type='range'],
+input[type='text'] {
+	width: 100%;
+	margin-bottom: 5px;
+}
+.family {
+	display: flex;
+	margin-bottom: 10px;
+	border: 2px solid transparent;
+	cursor: pointer;
+}
+.family.selected {
+	border-color: #007bff;
+}
+.family-name {
+	writing-mode: vertical-rl;
+	text-orientation: mixed;
+	padding: 10px 5px;
+	background: #f8f9fa;
+	min-width: 80px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 12px;
+}
+.swatches {
+	display: flex;
+	flex: 1;
+}
+.swatch {
+	flex: 1;
+	height: 100px;
+	min-width: 20px;
+}
+.curve-dropdown {
+	position: relative;
+	display: inline-block;
+}
+.curve-dropdown-button {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+	width: 100%;
+	padding: 8px;
+}
+.curve-dropdown-button svg.chevron {
+	margin-left: auto;
+}
+.curve-dropdown-menu {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	background: #fff;
+	border: 1px solid #ccc;
+	min-width: 180px;
+	z-index: 1000;
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+.curve-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	cursor: pointer;
+}
+.curve-option:hover,
+.curve-option.selected {
+	background-color: #f0f0f0;
+}
+.align-controls button {
+	margin-right: 5px;
+}
+.css-export {
+	border: 1px solid #ccc;
+	padding: 10px;
+	position: relative;
+}
+.css-export-controls {
+	display: flex;
+	gap: 10px;
+	margin-bottom: 10px;
+}
+#css-output {
+	font-family: monospace;
+	font-size: 11px;
+	white-space: pre;
+	background: #f8f9fa;
+	padding: 10px;
+	border: 1px solid #ddd;
+	max-height: 200px;
+	overflow-y: auto;
+}
+#selected-family-controls {
+	display: none;
+}
+.lch-ranges {
+	background: #f8f9fa;
+	padding: 10px;
+	font-size: 12px;
+	font-family: monospace;
+}

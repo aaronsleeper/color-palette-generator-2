@@ -4,9 +4,9 @@
 	"description": "A sophisticated color palette generator that creates tonal variations within hue families using mathematical easing curves",
 	"main": "index.html",
 	"scripts": {
-		"start": "python -m http.server 8000",
-		"serve": "python -m http.server 8000",
-		"dev": "python -m http.server 8000"
+		"start": "python3 -m http.server 3000",
+		"serve": "python3 -m http.server 3000",
+		"dev": "python3 -m http.server 3000"
 	},
 	"keywords": [
 		"color",
