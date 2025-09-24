@@ -16,6 +16,11 @@
 			href="styles.css"
 		/>
 		<link
+			rel="stylesheet"
+			href="https://unpkg.com/@rogieking/figui3@latest/fig.css"
+		/>
+		<script src="https://unpkg.com/@rogieking/figui3@latest/fig.js"></script>
+		<link
 			rel="icon"
 			href="data:,"
 		/>
@@ -40,174 +45,131 @@
 					<div>C: 0-150</div>
 					<div>H: 0-360</div>
 				</div>
-				<label
-					>Family Count:
-					<input
+				<fig-field>
+					<label>Family Count:</label>
+					<fig-input-text
 						type="number"
 						id="family-count"
 						min="1"
 						max="21"
 						value="1"
-					/>
-				</label>
-				<label
-					>Steps toward Min:
-					<input
+					></fig-input-text>
+				</fig-field>
+				<fig-field>
+					<label>Steps toward Min:</label>
+					<fig-input-text
 						type="number"
 						id="steps-min"
 						min="0"
 						max="21"
 						value="3"
-					/>
-				</label>
-				<label
-					>Steps toward Max:
-					<input
+					></fig-input-text>
+				</fig-field>
+				<fig-field>
+					<label>Steps toward Max:</label>
+					<fig-input-text
 						type="number"
 						id="steps-max"
 						min="0"
 						max="21"
 						value="3"
-					/>
-				</label>
+					></fig-input-text>
+				</fig-field>
 				<fieldset class="transform-controls">
 					<legend>Transform Min</legend>
-					<label
-						>L:
-						<input
-							type="number"
-							id="transform-min-l"
-							value="-42"
-							min="-100"
-							max="100"
-						/>
-						<input
-							type="range"
+					<fig-field direction="horizontal">
+						<label>L:</label>
+						<fig-slider
 							id="transform-min-l-slider"
 							min="-100"
 							max="100"
 							value="-42"
-						/>
-					</label>
-					<label
-						>C:
-						<input
-							type="number"
-							id="transform-min-c"
-							value="8"
-							min="-150"
-							max="150"
-						/>
-						<input
-							type="range"
+							text="true"
+						></fig-slider>
+					</fig-field>
+					<fig-field direction="horizontal">
+						<label>C:</label>
+						<fig-slider
 							id="transform-min-c-slider"
 							min="-150"
 							max="150"
 							value="8"
-						/>
-					</label>
-					<label
-						>H:
-						<input
-							type="number"
-							id="transform-min-h"
-							value="-4"
-							min="-360"
-							max="360"
-						/>
-						<input
-							type="range"
+							text="true"
+						></fig-slider>
+					</fig-field>
+					<fig-field direction="horizontal">
+						<label>H:</label>
+						<fig-slider
 							id="transform-min-h-slider"
 							min="-360"
 							max="360"
 							value="-4"
-						/>
-					</label>
+							text="true"
+						></fig-slider>
+					</fig-field>
 				</fieldset>
 				<fieldset class="transform-controls">
 					<legend>Transform Max</legend>
-					<label
-						>L:
-						<input
-							type="number"
-							id="transform-max-l"
-							value="42"
-							min="-100"
-							max="100"
-						/>
-						<input
-							type="range"
+					<fig-field direction="horizontal">
+						<label>L:</label>
+						<fig-slider
 							id="transform-max-l-slider"
 							min="-100"
 							max="100"
 							value="42"
-						/>
-					</label>
-					<label
-						>C:
-						<input
-							type="number"
-							id="transform-max-c"
-							value="-8"
-							min="-150"
-							max="150"
-						/>
-						<input
-							type="range"
+							text="true"
+						></fig-slider>
+					</fig-field>
+					<fig-field direction="horizontal">
+						<label>C:</label>
+						<fig-slider
 							id="transform-max-c-slider"
 							min="-150"
 							max="150"
 							value="-8"
-						/>
-					</label>
-					<label
-						>H:
-						<input
-							type="number"
-							id="transform-max-h"
-							value="4"
-							min="-360"
-							max="360"
-						/>
-						<input
-							type="range"
+							text="true"
+						></fig-slider>
+					</fig-field>
+					<fig-field direction="horizontal">
+						<label>H:</label>
+						<fig-slider
 							id="transform-max-h-slider"
 							min="-360"
 							max="360"
 							value="4"
-						/>
-					</label>
+							text="true"
+						></fig-slider>
+					</fig-field>
 				</fieldset>
-				<div class="curve-selection">
-					<label for="curve-select">Curve:</label>
-					<div
-						id="curve-select"
-						class="curve-dropdown"
-					></div>
-				</div>
+				<fig-field>
+					<label>Curve:</label>
+					<fig-dropdown id="curve-select" value="sinusoidalPosition">
+						<option value="linearPosition">Linear</option>
+						<option value="quadraticPosition">Ease In</option>
+						<option value="sinusoidalPosition">Ease In Out</option>
+						<option value="exponentialPosition">Exponential</option>
+						<option value="cubicPosition">Cubic</option>
+						<option value="smoothStepPosition">Smooth Step</option>
+					</fig-dropdown>
+				</fig-field>
 				<div class="align-controls">
-					<button id="align-l">L</button>
-					<button id="align-c">C</button>
-					<button id="align-h">H</button>
+					<fig-button id="align-l" variant="secondary">L</fig-button>
+					<fig-button id="align-c" variant="secondary">C</fig-button>
+					<fig-button id="align-h" variant="secondary">H</fig-button>
 				</div>
 				<div>
-					<button id="download-svg">📥 SVG</button>
-					<button id="copy-svg">📋 SVG</button>
+					<fig-button id="download-svg" variant="primary">📥 SVG</fig-button>
+					<fig-button id="copy-svg" variant="secondary">📋 SVG</fig-button>
 				</div>
 				<div class="css-export">
 					<div class="css-export-controls">
-						<select id="color-space">
-							<option
-								value="lch"
-								selected
-							>
-								LCH
-							</option>
+						<fig-dropdown id="color-space" value="lch">
+							<option value="lch">LCH</option>
 							<option value="hex">Hex</option>
 							<option value="hsl">HSL</option>
 							<option value="rgb">RGB</option>
-						</select>
-						<button id="copy-css">📋 CSS</button>
+						</fig-dropdown>
+						<fig-button id="copy-css" variant="secondary">📋 CSS</fig-button>
 					</div>
 					<pre id="css-output">/* CSS will appear here */</pre>
 				</div>
@@ -221,59 +183,43 @@
 				id="family-controls"
 			>
 				<div id="selected-family-controls">
-					<label
-						>Family Name:
-						<input
-							type="text"
-							id="family-name"
-						/>
-						<button id="reset-name">🔄</button>
-					</label>
-					<label
-						>L:
-						<input
-							type="number"
-							id="base-l"
-							min="0"
-							max="100"
-						/>
-						<input
-							type="range"
+					<fig-field>
+						<label>Family Name:</label>
+						<div style="display: flex; gap: 8px; align-items: center;">
+							<fig-input-text
+								type="text"
+								id="family-name"
+							></fig-input-text>
+							<fig-button id="reset-name" variant="ghost">🔄</fig-button>
+						</div>
+					</fig-field>
+					<fig-field direction="horizontal">
+						<label>L:</label>
+						<fig-slider
 							id="base-l-slider"
 							min="0"
 							max="100"
-						/>
-					</label>
-					<label
-						>C:
-						<input
-							type="number"
-							id="base-c"
-							min="0"
-							max="150"
-						/>
-						<input
-							type="range"
+							text="true"
+						></fig-slider>
+					</fig-field>
+					<fig-field direction="horizontal">
+						<label>C:</label>
+						<fig-slider
 							id="base-c-slider"
 							min="0"
 							max="150"
-						/>
-					</label>
-					<label
-						>H:
-						<input
-							type="number"
-							id="base-h"
-							min="0"
-							max="360"
-						/>
-						<input
-							type="range"
+							text="true"
+						></fig-slider>
+					</fig-field>
+					<fig-field direction="horizontal">
+						<label>H:</label>
+						<fig-slider
 							id="base-h-slider"
 							min="0"
 							max="360"
-						/>
-					</label>
+							text="true"
+						></fig-slider>
+					</fig-field>
 				</div>
 			</div>
 		</div>

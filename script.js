@@ -109,111 +109,7 @@ function generateFamilySwatches(baseHsl, minHsl, maxHsl, stepsMin, stepsMax, cur
 	return swatches;
 }
 
-function createCurveIcon(curveType, width = 24, height = 16) {
-	const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-	svg.setAttribute('width', width);
-	svg.setAttribute('height', height);
-	svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-	const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-	path.setAttribute('stroke', 'currentColor');
-	path.setAttribute('stroke-width', '1.5');
-	path.setAttribute('fill', 'none');
-	let d;
-	switch (curveType) {
-		case 'linearPosition':
-			d = `M 2 ${height - 2} L ${width - 2} 2`;
-			break;
-		case 'quadraticPosition':
-			d = `M 2 ${height - 2} Q 6 ${height - 2} ${width - 2} 2`;
-			break;
-		case 'quadraticPosition-reverse':
-			d = `M 2 ${height - 2} Q ${width - 6} 2 ${width - 2} 2`;
-			break;
-		case 'sinusoidalPosition':
-			d = `M 2 ${height - 2} Q ${width / 4} ${height - 2} ${width / 2} ${height / 2} T ${width - 2} 2`;
-			break;
-		case 'exponentialPosition':
-			d = `M 2 ${height - 2} Q 2 ${height / 2} ${width - 2} 2`;
-			break;
-		case 'cubicPosition':
-			d = `M 2 ${height - 2} C 2 ${height - 2} 8 ${height - 6} ${width - 2} 2`;
-			break;
-		case 'smoothStepPosition':
-			d = `M 2 ${height - 2} C 8 ${height - 2} ${width - 8} 2 ${width - 2} 2`;
-			break;
-		default:
-			d = `M 2 ${height - 2} L ${width - 2} 2`;
-	}
-	path.setAttribute('d', d);
-	svg.appendChild(path);
-	return svg;
-}
-
-function createCustomCurveDropdown() {
-	const container = document.getElementById('curve-select');
-	container.innerHTML = '';
-	const button = document.createElement('button');
-	button.className = 'curve-dropdown-button';
-	button.type = 'button';
-	button.innerHTML = `${
-		createCurveIcon('sinusoidalPosition').outerHTML
-	}<span>Ease In Out</span><svg class="chevron" width="12" height="8" viewBox="0 0 12 8"><path d="M2 2 L6 6 L10 2" stroke="currentColor" fill="none" stroke-width="1.5"/></svg>`;
-	const dropdown = document.createElement('div');
-	dropdown.className = 'curve-dropdown-menu';
-	dropdown.style.display = 'none';
-	const curves = [
-		{ value: 'linearPosition', label: 'Linear' },
-		{ value: 'quadraticPosition', label: 'Ease In' },
-		{ value: 'quadraticPosition', label: 'Ease Out', reverse: true },
-		{ value: 'sinusoidalPosition', label: 'Ease In Out', selected: true },
-		{ value: 'exponentialPosition', label: 'Exponential' },
-		{ value: 'cubicPosition', label: 'Cubic' },
-		{ value: 'smoothStepPosition', label: 'Smooth Step' },
-	];
-	curves.forEach((curve) => {
-		const option = document.createElement('div');
-		option.className = 'curve-option';
-		option.setAttribute('data-value', curve.value);
-		if (curve.reverse) option.setAttribute('data-reverse', 'true');
-		if (curve.selected) option.classList.add('selected');
-		const iconType = curve.reverse ? `${curve.value}-reverse` : curve.value;
-		option.innerHTML = `${createCurveIcon(iconType).outerHTML}<span>${curve.label}</span>`;
-		option.addEventListener('click', () => {
-			selectCurve(curve.value, curve.reverse, curve.label, iconType);
-			closeDropdown();
-		});
-		dropdown.appendChild(option);
-	});
-	button.addEventListener('click', (e) => {
-		e.stopPropagation();
-		toggleDropdown();
-	});
-	document.addEventListener('click', (e) => {
-		if (!container.contains(e.target)) closeDropdown();
-	});
-	container.appendChild(button);
-	container.appendChild(dropdown);
-	function toggleDropdown() {
-		const isOpen = dropdown.style.display !== 'none';
-		dropdown.style.display = isOpen ? 'none' : 'block';
-		button.setAttribute('aria-expanded', !isOpen);
-	}
-	function closeDropdown() {
-		dropdown.style.display = 'none';
-		button.setAttribute('aria-expanded', 'false');
-	}
-	function selectCurve(value, reverse, label, iconType) {
-		button.innerHTML = `${
-			createCurveIcon(iconType).outerHTML
-		}<span>${label}</span><svg class="chevron" width="12" height="8" viewBox="0 0 12 8"><path d="M2 2 L6 6 L10 2" stroke="currentColor" fill="none" stroke-width="1.5"/></svg>`;
-		dropdown.querySelectorAll('.curve-option').forEach((opt) => opt.classList.remove('selected'));
-		dropdown
-			.querySelector(`[data-value="${value}"]${reverse ? '[data-reverse="true"]' : ':not([data-reverse])'}`)
-			?.classList.add('selected');
-		state.curveType = value;
-		updateAllFamilies();
-	}
-}
+// Custom curve dropdown functions removed - now using fig-dropdown
 
 function createFamilyHTML(index, baseHsl, name, nameIsCustom) {
 	const nameOpacity = nameIsCustom ? '1' : '0.6';
@@ -252,11 +148,8 @@ function selectFamily(familyIndex) {
 	const baseLch = hslToLch(family.base);
 	document.getElementById('family-name').value = family.name;
 	document.getElementById('family-name').style.opacity = family.nameIsCustom ? '1' : '0.6';
-	document.getElementById('base-l').value = Math.round(baseLch[0]);
 	document.getElementById('base-l-slider').value = Math.round(baseLch[0]);
-	document.getElementById('base-c').value = Math.round(baseLch[1]);
 	document.getElementById('base-c-slider').value = Math.round(baseLch[1]);
-	document.getElementById('base-h').value = Math.round(baseLch[2]);
 	document.getElementById('base-h-slider').value = Math.round(baseLch[2]);
 }
 
@@ -279,26 +172,8 @@ function updateAllFamilies() {
 }
 
 function syncInputs(changedElement) {
-	const isSlider = changedElement.type === 'range';
-	const isNumber = changedElement.type === 'number';
-	if (isSlider) {
-		const numberId = changedElement.id.replace('-slider', '');
-		const numberInput = document.getElementById(numberId);
-		if (numberInput) numberInput.value = changedElement.value;
-	}
-	if (isNumber) {
-		const sliderId = changedElement.id + '-slider';
-		const sliderInput = document.getElementById(sliderId);
-		if (sliderInput) {
-			const clampedValue = clamp(
-				parseFloat(changedElement.value),
-				parseFloat(sliderInput.min),
-				parseFloat(sliderInput.max)
-			);
-			changedElement.value = clampedValue;
-			sliderInput.value = clampedValue;
-		}
-	}
+	// For Figma UI3 components, the slider handles its own text input
+	// No need for manual syncing as it's built into the component
 }
 
 function generateCSSExport() {
@@ -359,10 +234,8 @@ async function copyToClipboard(text) {
 }
 
 document.addEventListener('input', (e) => {
-	if (e.target.matches('input[type="number"], input[type="range"], input[type="text"]')) {
-		if (e.target.type === 'number' || e.target.type === 'range') {
-			syncInputs(e.target);
-		}
+	// Handle Figma UI3 components
+	if (e.target.tagName === 'FIG-SLIDER' || e.target.tagName === 'FIG-INPUT-TEXT') {
 		if (e.target.id.startsWith('transform-')) {
 			const [, dir, ch] = e.target.id.split('-');
 			state.transforms[dir][ch] = parseFloat(e.target.value);
@@ -414,9 +287,14 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
-	if (e.target.id === 'color-space') {
-		state.exportColorSpace = e.target.value;
-		updateCSSExport();
+	if (e.target.tagName === 'FIG-DROPDOWN') {
+		if (e.target.id === 'color-space') {
+			state.exportColorSpace = e.target.value;
+			updateCSSExport();
+		} else if (e.target.id === 'curve-select') {
+			state.curveType = e.target.value;
+			updateAllFamilies();
+		}
 	}
 });
 
@@ -424,7 +302,7 @@ document.addEventListener('change', (e) => {
 document.addEventListener(
 	'focus',
 	(e) => {
-		if (e.target.matches('input[type="number"], input[type="text"]')) {
+		if (e.target.tagName === 'FIG-INPUT-TEXT') {
 			e.target.select();
 		}
 	},
@@ -544,7 +422,6 @@ function generateSVGExport() {
 
 function init() {
 	console.log('Init function called');
-	createCustomCurveDropdown();
 	addFamily();
 	setTimeout(() => {
 		if (state.families.length > 0) selectFamily(0);
