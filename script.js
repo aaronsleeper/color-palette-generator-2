@@ -34,7 +34,7 @@ function generateColorName(hsl) {
 	// Convert HSL to RGB for the color naming library
 	const rgb = hslToRgb(hsl);
 	const hex = `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
-	
+
 	// Use ntc.js to get the closest color name
 	const n_match = ntc.name(hex);
 	return n_match[1]; // Return just the color name
