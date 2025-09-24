@@ -860,6 +860,17 @@
 				}
 			});
 
+			// Select all text when inputs receive focus
+			document.addEventListener(
+				'focus',
+				(e) => {
+					if (e.target.matches('input[type="number"], input[type="text"]')) {
+						e.target.select();
+					}
+				},
+				true
+			);
+
 			document.getElementById('align-l').addEventListener('click', () => {
 				if (state.families.length === 0) return;
 				const ref = hslToLch(state.families[0].base);
