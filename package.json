@@ -30,8 +30,9 @@
 		"url": "https://github.com/yourusername/color-palette-generator/issues"
 	},
 	"homepage": "https://github.com/yourusername/color-palette-generator#readme",
-	"devDependencies": {},
-	"dependencies": {},
+	"dependencies": {
+		"name_any_color": "^1.1.4"
+	},
 	"engines": {
 		"node": ">=14.0.0"
 	},

@@ -31,21 +31,13 @@ function generateRandomBaseColor() {
 }
 
 function generateColorName(hsl) {
-	const hueNames = [
-		'red',
-		'orange',
-		'yellow',
-		'lime',
-		'green',
-		'teal',
-		'cyan',
-		'sky',
-		'blue',
-		'purple',
-		'pink',
-		'rose',
-	];
-	return hueNames[Math.floor(hsl[0] / 30) % hueNames.length];
+	// Convert HSL to RGB for the color naming library
+	const rgb = hslToRgb(hsl);
+	const hex = `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+	
+	// Use ntc.js to get the closest color name
+	const n_match = ntc.name(hex);
+	return n_match[1]; // Return just the color name
 }
 
 function lchToHsl(l, c, h) {
